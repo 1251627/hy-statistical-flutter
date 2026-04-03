@@ -1,39 +1,79 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# HyStatistical Flutter SDK
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+轻量级数据埋点 SDK，支持事件上报、批量发送、离线缓存、自动采集 App 生命周期事件。
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
+## 安装
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
-
-## Usage
-
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
-```dart
-const like = 'sample';
+```yaml
+# pubspec.yaml
+dependencies:
+  hy_statistical_flutter:
+    git:
+      url: https://github.com/1251627/hy-statistical-flutter.git
+      ref: 0.1.0
 ```
 
-## Additional information
+```bash
+flutter pub get
+```
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+## 使用
+
+### 初始化
+
+```dart
+import 'package:hy_statistical_flutter/statistical_flutter.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await HyStatistical.initialize(
+    config: HyStatisticalConfig(apiKey: 'your_api_key'),
+    appVersion: '1.0.0',
+  );
+  runApp(MyApp());
+}
+```
+
+### 上报事件
+
+#### 订阅事件
+
+事件名必须为 `subscribe_success`，后台订阅页面根据此名称识别。
+
+```dart
+HyStatistical.track('subscribe_success', {
+  'plan_id': 'pro_monthly',
+  'period': 'monthly',       // weekly / monthly / yearly
+  'source': 'paywall_home',  // 触发订阅的页面来源
+});
+```
+
+#### 其他业务事件
+
+事件名和 properties 的 key/value 可以按自己的业务需求自由定义，后台会自动识别并展示。
+
+```dart
+// 自定义事件 + 自定义参数
+HyStatistical.track('your_event_name', {
+  'your_key': 'your_value',
+  'another_key': 123,
+});
+
+// 无参数事件
+HyStatistical.track('button_click');
+```
+
+### 设置用户 ID（可选，登录后调用）
+
+```dart
+HyStatistical.setUserId('user_123');
+```
+
+## 自动采集
+
+SDK 初始化后自动采集以下事件，无需手动调用：
+
+| 事件 | 触发时机 |
+|------|---------|
+| `app_open` | 首次初始化 |
+| `app_foreground` | App 从后台回到前台 |
