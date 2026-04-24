@@ -11,4 +11,9 @@ void main() {
     expect(config.maxRetries, 3);
     expect(config.enableLog, false);
   });
+
+  test('HyStatisticalConfig passes through enableLog', () {
+    const config = HyStatisticalConfig(apiKey: 'k', enableLog: true);
+    expect(config.enableLog, true);
+  });
 }

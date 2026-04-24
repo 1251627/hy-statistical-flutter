@@ -22,5 +22,13 @@ class HyDeviceInfo {
 
   String get platform => Platform.isIOS ? 'ios' : 'android';
 
-  String get osVersion => Platform.operatingSystemVersion;
+  /// 归一化 OS 版本号，例如
+  /// iOS:     'Version 26.3.1 (a) (Build 23D771330a)' → '26.3.1'
+  /// Android: 'Linux 4.14.190 #1 SMP PREEMPT' → '4.14.190'
+  /// 抽不到时回退到原始字符串。
+  String get osVersion {
+    final raw = Platform.operatingSystemVersion;
+    final match = RegExp(r'\d+(?:\.\d+)+').firstMatch(raw);
+    return match?.group(0) ?? raw;
+  }
 }

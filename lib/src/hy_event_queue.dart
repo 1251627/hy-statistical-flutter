@@ -33,9 +33,11 @@ class HyEventQueue {
     _timer = Timer.periodic(Duration(seconds: flushInterval), (_) => flush());
   }
 
-  void stop() {
+  /// 停止定时 flush 并把内存里剩余的事件落盘到离线缓存，避免进程退出丢数据。
+  Future<void> stop() async {
     _timer?.cancel();
     _timer = null;
+    await _saveOfflineEvents();
   }
 
   void add(Map<String, dynamic> event) {
@@ -95,7 +97,9 @@ class HyEventQueue {
 
     if (success || clientError) {
       // 成功 或 客户端错误（无法恢复）：都从队列里移除这批
-      _queue.removeRange(0, batch.length);
+      // clamp 边界：若期间 clearPending 清空了队列，避免 removeRange 抛 RangeError
+      final removeLen = batch.length.clamp(0, _queue.length);
+      if (removeLen > 0) _queue.removeRange(0, removeLen);
       if (_queue.isEmpty) {
         await _storage.delete(key: _storageKey);
       }
