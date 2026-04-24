@@ -109,6 +109,12 @@ class HyStatistical {
     await _instance?._queue.flush();
   }
 
+  /// 清空内存队列和离线缓存中的所有待发事件。适合业务方在检测到
+  /// 历史数据已不可用（例如格式版本升级、切换后端）时主动调用。
+  static Future<void> clearPending() async {
+    await _instance?._queue.clearPending();
+  }
+
   static String? get deviceId => _instance?._deviceId;
 
   static int get pendingCount => _instance?._queue.pendingCount ?? 0;

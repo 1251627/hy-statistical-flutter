@@ -56,6 +56,7 @@ class HyEventQueue {
     _log('flush → POST $serverUrl/collect batch=${batch.length}');
 
     var success = false;
+    var clientError = false;
     dynamic lastError;
     int lastStatus = 0;
     String lastBody = '';
@@ -76,25 +77,41 @@ class HyEventQueue {
           _log('flush OK ${response.body}');
           break;
         }
+        if (response.statusCode >= 400 && response.statusCode < 500) {
+          // 4xx 是请求本身有问题，重试无用，直接丢弃这批
+          clientError = true;
+          _log('flush DROP status=$lastStatus (client error, discarding ${batch.length} events) body=$lastBody');
+          break;
+        }
         _log('flush FAIL attempt=${attempt + 1}/$maxRetries status=$lastStatus body=$lastBody');
       } catch (e) {
         lastError = e;
         _log('flush FAIL attempt=${attempt + 1}/$maxRetries error=$e');
-        if (attempt < maxRetries - 1) {
-          await Future.delayed(Duration(seconds: 1 << attempt));
-        }
+      }
+      if (attempt < maxRetries - 1) {
+        await Future.delayed(Duration(seconds: 1 << attempt));
       }
     }
 
-    if (success) {
+    if (success || clientError) {
+      // 成功 或 客户端错误（无法恢复）：都从队列里移除这批
       _queue.removeRange(0, batch.length);
-      await _storage.delete(key: _storageKey);
+      if (_queue.isEmpty) {
+        await _storage.delete(key: _storageKey);
+      }
     } else {
       _log('flush GIVE UP after $maxRetries attempts lastStatus=$lastStatus lastError=$lastError; saving ${_queue.length} events offline');
       await _saveOfflineEvents();
     }
 
     _flushing = false;
+  }
+
+  Future<void> clearPending() async {
+    final n = _queue.length;
+    _queue.clear();
+    await _storage.delete(key: _storageKey);
+    _log('cleared $n pending events and offline cache');
   }
 
   Future<void> _saveOfflineEvents() async {
