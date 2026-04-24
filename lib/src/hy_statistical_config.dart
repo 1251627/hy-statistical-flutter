@@ -7,7 +7,7 @@ class HyStatisticalConfig {
 
   const HyStatisticalConfig({
     required this.apiKey,
-    this.serverUrl = 'http://192.168.9.53:3000/api/v1',
+    this.serverUrl = 'http://192.168.9.85:3000/api/v1',
     this.flushInterval = 10,
     this.flushSize = 50,
     this.maxRetries = 3,
