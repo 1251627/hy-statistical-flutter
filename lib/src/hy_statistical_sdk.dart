@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import 'hy_statistical_config.dart';
@@ -21,6 +22,7 @@ class HyStatistical {
 
   final HyDeviceInfo _deviceInfo;
   final HyEventQueue _queue;
+  final bool _enableLog;
   late final HyLifecycleObserver _lifecycle;
 
   String? _userId;
@@ -31,8 +33,10 @@ class HyStatistical {
   HyStatistical._({
     required HyDeviceInfo deviceInfo,
     required HyEventQueue queue,
+    required bool enableLog,
   })  : _deviceInfo = deviceInfo,
-        _queue = queue;
+        _queue = queue,
+        _enableLog = enableLog;
 
   static Future<void> initialize({
     required HyStatisticalConfig config,
@@ -49,11 +53,13 @@ class HyStatistical {
       flushSize: config.flushSize,
       flushInterval: config.flushInterval,
       maxRetries: config.maxRetries,
+      enableLog: config.enableLog,
     );
 
     final instance = HyStatistical._(
       deviceInfo: deviceInfo,
       queue: queue,
+      enableLog: config.enableLog,
     );
 
     instance._deviceId = deviceId;
@@ -65,11 +71,22 @@ class HyStatistical {
         if (eventName == 'app_foreground' || eventName == 'app_open') {
           instance._sessionId = _uuid.v4().substring(0, 8);
         }
+        instance._log('lifecycle $eventName');
         instance._trackInternal(eventName);
       },
     );
 
     _instance = instance;
+
+    if (config.enableLog) {
+      final masked = config.apiKey.length > 8
+          ? '${config.apiKey.substring(0, 8)}***'
+          : '***';
+      debugPrint('[HyStatistical] init serverUrl=${config.serverUrl} '
+          'apiKey=$masked deviceId=$deviceId appVersion=${instance._appVersion} '
+          'platform=${deviceInfo.platform} flushInterval=${config.flushInterval}s '
+          'flushSize=${config.flushSize} maxRetries=${config.maxRetries}');
+    }
 
     await queue.start();
     instance._lifecycle.start();
@@ -81,6 +98,7 @@ class HyStatistical {
 
   static void setUserId(String? userId) {
     _instance?._userId = userId;
+    _instance?._log('setUserId ${userId ?? '(null)'}');
   }
 
   static void setAppVersion(String version) {
@@ -119,5 +137,11 @@ class HyStatistical {
       event['properties'] = properties;
     }
     _queue.add(event);
+    _log('track name=$eventName queue=${_queue.pendingCount}'
+        '${properties != null && properties.isNotEmpty ? ' props=$properties' : ''}');
+  }
+
+  void _log(String msg) {
+    if (_enableLog) debugPrint('[HyStatistical] $msg');
   }
 }

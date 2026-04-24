@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -9,6 +10,7 @@ class HyEventQueue {
   final int flushSize;
   final int flushInterval;
   final int maxRetries;
+  final bool enableLog;
 
   final List<Map<String, dynamic>> _queue = [];
   Timer? _timer;
@@ -23,6 +25,7 @@ class HyEventQueue {
     this.flushSize = 50,
     this.flushInterval = 10,
     this.maxRetries = 3,
+    this.enableLog = false,
   });
 
   Future<void> start() async {
@@ -50,7 +53,12 @@ class HyEventQueue {
       _queue.take(flushSize > _queue.length ? _queue.length : flushSize),
     );
 
+    _log('flush → POST $serverUrl/collect batch=${batch.length}');
+
     var success = false;
+    dynamic lastError;
+    int lastStatus = 0;
+    String lastBody = '';
     for (var attempt = 0; attempt < maxRetries; attempt++) {
       try {
         final response = await http.post(
@@ -61,11 +69,17 @@ class HyEventQueue {
           },
           body: jsonEncode({'events': batch}),
         );
+        lastStatus = response.statusCode;
+        lastBody = response.body;
         if (response.statusCode == 200) {
           success = true;
+          _log('flush OK ${response.body}');
           break;
         }
-      } catch (_) {
+        _log('flush FAIL attempt=${attempt + 1}/$maxRetries status=$lastStatus body=$lastBody');
+      } catch (e) {
+        lastError = e;
+        _log('flush FAIL attempt=${attempt + 1}/$maxRetries error=$e');
         if (attempt < maxRetries - 1) {
           await Future.delayed(Duration(seconds: 1 << attempt));
         }
@@ -76,6 +90,7 @@ class HyEventQueue {
       _queue.removeRange(0, batch.length);
       await _storage.delete(key: _storageKey);
     } else {
+      _log('flush GIVE UP after $maxRetries attempts lastStatus=$lastStatus lastError=$lastError; saving ${_queue.length} events offline');
       await _saveOfflineEvents();
     }
 
@@ -86,6 +101,7 @@ class HyEventQueue {
     if (_queue.isEmpty) return;
     final json = jsonEncode(_queue);
     await _storage.write(key: _storageKey, value: json);
+    _log('saved ${_queue.length} events offline');
   }
 
   Future<void> _restoreOfflineEvents() async {
@@ -96,6 +112,7 @@ class HyEventQueue {
         for (final item in list) {
           _queue.add(Map<String, dynamic>.from(item));
         }
+        _log('restored ${list.length} events from offline cache');
       } catch (_) {
         await _storage.delete(key: _storageKey);
       }
@@ -103,4 +120,8 @@ class HyEventQueue {
   }
 
   int get pendingCount => _queue.length;
+
+  void _log(String msg) {
+    if (enableLog) debugPrint('[HyStatistical] $msg');
+  }
 }

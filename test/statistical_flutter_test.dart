@@ -9,5 +9,6 @@ void main() {
     expect(config.flushInterval, 10);
     expect(config.flushSize, 50);
     expect(config.maxRetries, 3);
+    expect(config.enableLog, false);
   });
 }

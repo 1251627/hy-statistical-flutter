@@ -4,6 +4,7 @@ class HyStatisticalConfig {
   final int flushInterval;
   final int flushSize;
   final int maxRetries;
+  final bool enableLog;
 
   const HyStatisticalConfig({
     required this.apiKey,
@@ -11,5 +12,6 @@ class HyStatisticalConfig {
     this.flushInterval = 10,
     this.flushSize = 50,
     this.maxRetries = 3,
+    this.enableLog = false,
   });
 }
