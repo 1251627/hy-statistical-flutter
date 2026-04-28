@@ -1,6 +1,6 @@
 name: hy_statistical_flutter
 description: "HyStatistical 数据埋点 Flutter SDK — 事件上报、批量发送、离线缓存、自动采集生命周期"
-version: 0.1.4
+version: 0.2.0
 
 environment:
   sdk: ^3.11.1
