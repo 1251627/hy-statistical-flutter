@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import 'hy_ad_fingerprint.dart';
 import 'hy_statistical_config.dart';
 import 'hy_device_info.dart';
 import 'hy_event_queue.dart';
@@ -23,6 +24,7 @@ class HyStatistical {
   final HyDeviceInfo _deviceInfo;
   final HyEventQueue _queue;
   final bool _enableLog;
+  final bool _enableAdAttribution;
   late final HyLifecycleObserver _lifecycle;
 
   String? _userId;
@@ -30,13 +32,19 @@ class HyStatistical {
   String _appVersion = '';
   String _deviceId = '';
 
+  /// 上次成功上报指纹的时间戳（秒）。同 visitorId 24h 节流。
+  int _lastFingerprintUploadAt = 0;
+  static const int _fingerprintThrottleSeconds = 24 * 3600;
+
   HyStatistical._({
     required HyDeviceInfo deviceInfo,
     required HyEventQueue queue,
     required bool enableLog,
+    required bool enableAdAttribution,
   })  : _deviceInfo = deviceInfo,
         _queue = queue,
-        _enableLog = enableLog;
+        _enableLog = enableLog,
+        _enableAdAttribution = enableAdAttribution;
 
   static Future<void> initialize({
     required HyStatisticalConfig config,
@@ -61,6 +69,7 @@ class HyStatistical {
       deviceInfo: deviceInfo,
       queue: queue,
       enableLog: config.enableLog,
+      enableAdAttribution: config.enableAdAttribution,
     );
 
     instance._deviceId = deviceId;
@@ -96,6 +105,12 @@ class HyStatistical {
 
     await queue.start();
     instance._lifecycle.start();
+
+    // 冷启动后异步触发一次指纹上报（不阻塞 initialize 返回）
+    if (config.enableAdAttribution) {
+      // ignore: unawaited_futures
+      instance._uploadFingerprintIfNeeded();
+    }
   }
 
   static void track(String eventName, [Map<String, dynamic>? properties]) {
@@ -105,6 +120,11 @@ class HyStatistical {
   static void setUserId(String? userId) {
     _instance?._userId = userId;
     _instance?._log('setUserId ${userId ?? '(null)'}');
+    // setUserId 通常是登录时刻，是补一次 fingerprint 上报的好时机（关联 user_id ↔ visitor_id）
+    if (_instance != null && _instance!._enableAdAttribution) {
+      // ignore: unawaited_futures
+      _instance!._uploadFingerprintIfNeeded();
+    }
   }
 
   static void setAppVersion(String version) {
@@ -160,5 +180,32 @@ class HyStatistical {
 
   void _log(String msg) {
     if (_enableLog) debugPrint('[HyStatistical] $msg');
+  }
+
+  /// 仿照 iOS SDK uploadFingerprintIfNeeded:
+  /// - 仅在 enableAdAttribution=true 时工作
+  /// - 同 visitorId 24h 内最多上报一次
+  /// - 通过 setNextFlushExtras 把 visitor_id + device_fingerprint 塞进下次 flush 的 body 顶层
+  /// - 然后立刻 flush 一次（即使队列为空也会触发空载 POST，确保指纹尽快到 backend）
+  Future<void> _uploadFingerprintIfNeeded() async {
+    if (!_enableAdAttribution) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (now - _lastFingerprintUploadAt < _fingerprintThrottleSeconds) return;
+
+    final fp = await HyAdFingerprint.collect();
+    if (!fp.isUsable) {
+      _log('fingerprint skipped (no usable identifier on this platform/state)');
+      return;
+    }
+
+    _queue.setNextFlushExtras({
+      'visitor_id': _deviceId,
+      'device_fingerprint': fp.toUploadPayload(),
+    });
+    await _queue.flush();
+    _lastFingerprintUploadAt = now;
+    _log('fingerprint uploaded idfa=${fp.idfa.isEmpty ? "none" : "***"} '
+        'idfv=${fp.idfv.isEmpty ? "none" : "***"} '
+        'paid=${fp.paid.isEmpty ? "none" : "${fp.paid.substring(0, 8)}..."}');
   }
 }

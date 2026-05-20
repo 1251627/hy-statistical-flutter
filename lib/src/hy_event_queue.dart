@@ -16,6 +16,16 @@ class HyEventQueue {
   Timer? _timer;
   bool _flushing = false;
 
+  /// 下次 flush 时附加到 body 顶层（跟 `events` 同级）的额外字段。
+  /// 用法：归因模块通过它把 `visitor_id` + `device_fingerprint` 附在下次 POST 上。
+  /// 一旦被发出（不论成功失败），立刻清空，只在"下一次" flush 生效。
+  Map<String, dynamic>? _nextFlushExtras;
+
+  /// 由归因模块调用：让下次 flush 在 body 里多带几个字段。
+  void setNextFlushExtras(Map<String, dynamic> extras) {
+    _nextFlushExtras = Map.from(extras);
+  }
+
   static const _storageKey = 'hy_statistical_offline_events';
   final _storage = const FlutterSecureStorage();
 
@@ -55,7 +65,16 @@ class HyEventQueue {
       _queue.take(flushSize > _queue.length ? _queue.length : flushSize),
     );
 
-    _log('flush → POST $serverUrl/collect batch=${batch.length}');
+    // 把额外字段（visitor_id / device_fingerprint）合并进 body，发出后立刻清空 extras
+    final extras = _nextFlushExtras;
+    _nextFlushExtras = null;
+    final body = <String, dynamic>{
+      if (extras != null) ...extras,
+      'events': batch,
+    };
+
+    _log('flush → POST $serverUrl/collect batch=${batch.length}'
+        '${extras != null ? ' extras=${extras.keys.toList()}' : ''}');
 
     var success = false;
     var clientError = false;
@@ -70,7 +89,7 @@ class HyEventQueue {
             'Content-Type': 'application/json',
             'X-Api-Key': apiKey,
           },
-          body: jsonEncode({'events': batch}),
+          body: jsonEncode(body),
         );
         lastStatus = response.statusCode;
         lastBody = response.body;

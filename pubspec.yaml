@@ -1,6 +1,6 @@
 name: hy_statistical_flutter
-description: "HyStatistical 数据埋点 Flutter SDK — 事件上报、批量发送、离线缓存、自动采集生命周期"
-version: 0.2.0
+description: "HyStatistical 数据埋点 Flutter SDK — 事件上报、批量发送、离线缓存、自动采集生命周期、广告归因（iOS）"
+version: 0.3.0
 
 environment:
   sdk: ^3.11.1
@@ -17,3 +17,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: HyStatisticalFlutterPlugin
+      # Android v0.3.0 暂不实现 ad attribution（OAID 集成依赖业务方接入额外 SDK）；
+      # Android 平台仍可正常使用事件上报（纯 Dart 实现，不走 plugin channel）

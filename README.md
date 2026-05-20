@@ -1,6 +1,6 @@
 # HyStatistical Flutter SDK
 
-轻量级数据埋点 SDK：事件上报、批量发送、离线缓存、自动采集 App 生命周期事件。
+轻量级数据埋点 SDK：事件上报、批量发送、离线缓存、自动采集 App 生命周期事件、**广告归因（v0.3.0+，iOS）**。
 
 ## 安装
 
@@ -10,7 +10,7 @@ dependencies:
   hy_statistical_flutter:
     git:
       url: https://github.com/1251627/hy-statistical-flutter.git
-      ref: v0.2.0
+      ref: v0.3.0
 ```
 
 ```bash
@@ -70,6 +70,7 @@ HyStatisticalConfig(
   flushSize: 50,                                       // 积累多少条立刻 flush
   maxRetries: 3,                                       // 网络错误重试次数
   enableLog: false,                                    // 打开后打印 [HyStatistical] 前缀的调试日志
+  enableAdAttribution: false,                          // v0.3.0+：开启后 SDK 在 App 内读取 IDFA / IDFV / PAID（仅 iOS）并随事件流上报到 serverUrl
 );
 ```
 
@@ -102,6 +103,42 @@ HyStatisticalConfig(
 - HTTP 5xx / 网络错误 → 重试 `maxRetries` 次，最终失败写入 Keychain，下次启动自动恢复
 - `insert_id` 是每条事件的 UUID，服务端根据这个去重
 
+## 广告归因（v0.3.0+，可选，仅 iOS）
+
+如果需要把 App 用户与外部广告点击（如小红书聚光 / 巨量引擎）做归因匹配，开启 `enableAdAttribution`：
+
+```dart
+HyStatistical.initialize(
+  config: HyStatisticalConfig(
+    apiKey: 'your_api_key',
+    serverUrl: 'https://collect.your-domain.com/api/v1',
+    enableAdAttribution: true,    // 新参数，默认 false
+  ),
+  appVersion: info.version,
+  userId: userId,
+);
+```
+
+### 工作机制
+
+- 数据走向：SDK 在你的 App 进程内读取设备字段 → 通过 platform channel 调原生 iOS → 随事件流 POST 到你自己配置的 `serverUrl/collect`。**SDK 作者不接触任何用户数据**，所有数据归你的服务端所有。
+- **冷启动后**与 **`setUserId(_)`** 调用时，SDK 各触发一次设备指纹上报；同 visitorId 24 小时内最多上报一次。
+- 读取字段：
+  - **IDFA**：通过 `ASIdentifierManager`，**不弹 ATT 授权框**。用户未授权时系统返回全零 UUID，SDK 识别后上报空串
+  - **IDFV**：通过 `UIDevice.identifierForVendor`，**无需用户授权**。同一开发者所有 App 间稳定。巨量引擎实时归因 API 必需
+  - **PAID**：基于 App 安装时间 + 系统更新时间 + 设备启动时间的不可逆 MD5 三元组，无授权要求
+- 算法与 iOS native SDK (hy_statistical_ios v0.4.0) **完全一致**——`HyAdFingerprint.swift` 是从 native SDK 直接 mirror 过来的，保证同设备同时刻算出的 IDFA / IDFV / PAID 字节相同
+- 关闭归因（默认状态）时，SDK 行为与 v0.2.x 完全一致，**不读取任何广告标识符**
+- Android 平台 v0.3.0 **不采集**（OAID 依赖业务方接入额外 SDK），事件上报照常工作
+
+### App Store 审核
+
+即使不弹 ATT，**`Info.plist` 中建议添加 `NSUserTrackingUsageDescription`** 描述用途（例如「用于评估广告投放效果」），否则部分审核员会拒绝。
+
+### 隐私政策
+
+启用归因前你的 App 隐私政策需明确声明读取 IDFA / IDFV / PAID 以及上报到你自己后端做归因。参考 `hy_statistical_ios` 仓库的 `PRIVACY_NOTICE_TEMPLATE.md`。
+
 ## 调试
 
 开发期把 `enableLog: true` 打开，会看到：
@@ -120,7 +157,15 @@ HyStatisticalConfig(
 
 ## 版本
 
-查看 [Releases](https://github.com/1251627/hy-statistical-flutter/releases)。最新稳定版：`v0.2.0`。
+查看 [Releases](https://github.com/1251627/hy-statistical-flutter/releases)。最新稳定版：`v0.3.0`。
+
+### v0.3.0 升级须知（向后兼容）
+
+新增可选参数 `enableAdAttribution`（默认 `false`）。不开启的项目无需任何代码改动，从 v0.2.x 升级直接拉新版即可。
+
+SDK 内部结构升级为 **Flutter plugin**（含原生 iOS 模块）。从 v0.2.x 升级到 v0.3.0 后，业务方 iOS 项目第一次 `flutter pub get` 之后需要 **`cd ios && pod install`**（标准 Flutter plugin 流程），否则 build iOS 时会提示找不到原生类。Android 端无需额外操作。
+
+开启 `enableAdAttribution=true` 后 SDK 在你的 App 内读取 IDFA / IDFV / PAID 并上报到你自己的 `serverUrl`，详见上文「广告归因」章节。**启用前需在 App 隐私政策中声明**。
 
 ### v0.2.0 升级须知（破坏性变更）
 
